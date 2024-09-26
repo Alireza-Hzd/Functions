@@ -1,0 +1,72 @@
+% Inspired from Dr. Gennadii Donchyts 
+% Profile genearion by resampling
+function reduceImageProfile(image, line, reducer, scale, crs, buffer) {
+  var length = line.length();
+  var distances = ee.List.sequence(0, length, scale)
+  var lines = line.cutLines(distances, ee.Number(scale)).geometries();
+  lines = lines.zip(distances).map(function(l) { 
+    l = ee.List(l)
+    
+    var geom = ee.Geometry(l.get(0))
+    var distance = ee.Number(l.get(1))
+    
+    geom = ee.Algorithms.GeometryConstructors.LineString(geom.coordinates())
+    
+    if(buffer) {
+      geom = geom.buffer(buffer, 1)
+    }
+    
+    return ee.Feature(geom, {distance: distance})
+  })
+  lines = ee.FeatureCollection(lines)
+
+  // reduce image for every segment
+  var values = image.reduceRegions( {
+    collection: ee.FeatureCollection(lines), 
+    reducer: reducer, 
+    scale: scale, 
+    crs: crs
+  })
+  
+  return values
+}
+
+% Descrete Profile genearion, Point by point
+
+function descretProfile(image, line, reducer, scale, crs) {
+  var length = line.length();
+  var distances = ee.List.sequence(0, length, scale)
+  var lines = line.cutLines(distances, ee.Number(scale)).geometries();
+  lines = lines.zip(distances).map(function(l) { 
+    l = ee.List(l)
+    
+    var geom = ee.Geometry(l.get(0))
+    var distance = ee.Number(l.get(1))
+    
+    geom = ee.Algorithms.GeometryConstructors.LineString(geom.coordinates())
+    
+    return ee.Feature(geom, {distance: distance})
+  })
+
+
+%R2
+
+var mean_sum = ee.Number(sum.reduce(ee.Reducer.sum())).divide(len);
+print(mean_sum)
+
+var ss_total = sum.map(function(y) {
+  return (ee.Number(y).subtract(mean_sum)).pow(2)
+}).reduce(ee.Reducer.sum());
+
+print(ss_total)
+var pairedLists = profile_gedi.zip(sum);
+var ss_residual = pairedLists.map(function(pair) {
+  var x = ee.Number(ee.List(pair).get(0));
+  var y = ee.Number(ee.List(pair).get(1));
+  return (y.subtract(x)).pow(2);
+}).reduce(ee.Reducer.sum());
+print(ss_residual)
+print(ss_total)
+var r_squared = ee.Number(1).subtract(ee.Number(ss_residual).divide(ee.Number(ss_total)));
+
+print('R-squared:', r_squared);
